@@ -1,5 +1,5 @@
 /* ============================================================
-   YENOM INVEST · Controle financeiro pessoal
+   NÉBULA · Controle financeiro pessoal
    ============================================================ */
 
 (function () {
@@ -9,9 +9,6 @@
   const STORAGE_KEY = "yenom_finance_entries_v1";
   const THEME_KEY = "yenom_finance_theme_v1";
   const CUSTOM_CATS_KEY = "yenom_finance_customcats_v1";
-  const CATEGORY_COLORS_KEY = "yenom_category_colors_v1";
-  const PRIVACY_KEY = "yenom_privacy_visibility_v1";
-  const CATEGORY_PALETTE = ["#EF4444", "#F97316", "#EAB308", "#22C55E", "#10B981", "#06B6D4", "#3B82F6", "#6366F1", "#8B5CF6", "#D946EF", "#EC4899", "#64748B"];
 
   const MONTH_NAMES = [
     "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -50,13 +47,13 @@
   let typeFilter = "todos";
   let searchTerm = "";
   let categoryFilter = "todas";
+  let donutShowingCategories = false;
 
   let editingEntryId = null;
   let deleteTargetId = null;
   let currentModalType = "ganho";
 
   let charts = {}; // chart.js instances
-  let privacyState = loadPrivacyState();
 
   /* ---------------- Utilities ---------------- */
   function uid() {
@@ -134,121 +131,6 @@
     return [...base, ...custom, "Outros"];
   }
 
-  function loadCategoryColors() {
-    try {
-      const raw = localStorage.getItem(CATEGORY_COLORS_KEY);
-      const parsed = raw ? JSON.parse(raw) : {};
-      return { ganho: parsed.ganho || {}, gasto: parsed.gasto || {}, investimento: parsed.investimento || {} };
-    } catch (e) {
-      return { ganho: {}, gasto: {}, investimento: {} };
-    }
-  }
-
-  function saveCategoryColors(colors) {
-    localStorage.setItem(CATEGORY_COLORS_KEY, JSON.stringify(colors));
-  }
-
-  function categoryColorKeyIndex(type, category) {
-    const text = `${type}:${category}`;
-    let hash = 0;
-    for (let i = 0; i < text.length; i++) hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
-    return Math.abs(hash) % CATEGORY_PALETTE.length;
-  }
-
-  function getCategoryColor(type, category) {
-    const colors = loadCategoryColors();
-    if (!colors[type]) colors[type] = {};
-    if (!colors[type][category]) {
-      colors[type][category] = CATEGORY_PALETTE[categoryColorKeyIndex(type, category)];
-      saveCategoryColors(colors);
-    }
-    return colors[type][category];
-  }
-
-  function setCategoryColor(type, category, color) {
-    if (!type || !category || !/^#[0-9a-f]{6}$/i.test(color || "")) return;
-    const colors = loadCategoryColors();
-    if (!colors[type]) colors[type] = {};
-    colors[type][category] = color.toUpperCase();
-    saveCategoryColors(colors);
-  }
-
-  function ensureAllCategoryColors() {
-    ["ganho", "gasto", "investimento"].forEach((type) => {
-      categoriesForType(type).forEach((category) => getCategoryColor(type, category));
-    });
-    entries.forEach((e) => getCategoryColor(e.type, e.category || "Outros"));
-  }
-
-  function renderColorPicker(category) {
-    const wrap = document.getElementById("categoryColorPicker");
-    const custom = document.getElementById("categoryColorCustom");
-    if (!wrap || !custom) return;
-    const safeCategory = category && category !== "__custom__" ? category : (document.getElementById("customCategoryInput").value.trim() || "Nova categoria");
-    const selected = getCategoryColor(currentModalType, safeCategory);
-    wrap.innerHTML = CATEGORY_PALETTE.map((color) => `<button type="button" class="color-swatch ${color.toUpperCase() === selected.toUpperCase() ? "is-selected" : ""}" data-color="${color}" style="--swatch:${color}" aria-label="Usar cor ${color}"></button>`).join("");
-    custom.value = selected;
-    wrap.querySelectorAll(".color-swatch").forEach((btn) => btn.addEventListener("click", () => {
-      custom.value = btn.dataset.color;
-      wrap.querySelectorAll(".color-swatch").forEach((b) => b.classList.toggle("is-selected", b === btn));
-    }));
-  }
-
-
-  /* ---------------- Privacy / visibility ---------------- */
-  function loadPrivacyState() {
-    try {
-      const raw = localStorage.getItem(PRIVACY_KEY);
-      const parsed = raw ? JSON.parse(raw) : {};
-      return {
-        ganho: Boolean(parsed.ganho),
-        gasto: Boolean(parsed.gasto),
-        investimento: Boolean(parsed.investimento)
-      };
-    } catch (e) {
-      return { ganho: false, gasto: false, investimento: false };
-    }
-  }
-
-  function savePrivacyState() {
-    localStorage.setItem(PRIVACY_KEY, JSON.stringify(privacyState));
-  }
-
-  function isValueHidden(type) {
-    // O saldo permanece independente dos controles de privacidade de ganhos e gastos.
-    if (type === "saldo") return false;
-    return Boolean(privacyState[type]);
-  }
-
-  function privateBRL(type, value, short = false) {
-    if (isValueHidden(type)) return short ? "R$ •••" : "R$ ••••••";
-    return short ? formatBRLShort(value) : formatBRL(value);
-  }
-
-  function privatePercent(type, value) {
-    if (isValueHidden(type)) return "••••";
-    return `${Number(value).toFixed(1)}%`;
-  }
-
-  function togglePrivacy(type) {
-    if (!Object.prototype.hasOwnProperty.call(privacyState, type)) return;
-    privacyState[type] = !privacyState[type];
-    savePrivacyState();
-    renderAll();
-  }
-
-  function renderPrivacyControls() {
-    document.querySelectorAll("[data-privacy-toggle]").forEach((btn) => {
-      const type = btn.dataset.privacyToggle;
-      const hidden = isValueHidden(type);
-      btn.innerHTML = `<i data-lucide="${hidden ? "eye-off" : "eye"}"></i>`;
-      btn.classList.toggle("is-hidden", hidden);
-      btn.setAttribute("aria-pressed", hidden ? "true" : "false");
-      btn.setAttribute("aria-label", `${hidden ? "Mostrar" : "Ocultar"} valores de ${TYPE_LABEL[type].toLowerCase()}s`);
-      btn.title = `${hidden ? "Mostrar" : "Ocultar"} valores`;
-    });
-  }
-
   /* ---------------- Filtering / computing ---------------- */
   function entriesForMonth(year, month) {
     const key = `${year}-${pad2(month + 1)}`;
@@ -267,8 +149,7 @@
     const ganhos = sumByType(list, "ganho");
     const gastos = sumByType(list, "gasto");
     const investimentos = sumByType(list, "investimento");
-    // Saldo = Ganhos - Gastos. Investimentos são contabilizados à parte e não entram no saldo.
-    return { ganhos, gastos, investimentos, saldo: ganhos - gastos };
+    return { ganhos, gastos, investimentos, saldo: ganhos - gastos - investimentos };
   }
 
   function prevMonthOf(year, month) {
@@ -281,12 +162,7 @@
   }
 
   /* ---------------- Counter animation ---------------- */
-  function animateCounter(el, targetValue, type) {
-    if (isValueHidden(type)) {
-      el.textContent = privateBRL(type, targetValue);
-      el.dataset.currentValue = String(targetValue);
-      return;
-    }
+  function animateCounter(el, targetValue, prefix) {
     const duration = 700;
     const startValue = parseFloat(el.dataset.currentValue || "0");
     const startTime = performance.now();
@@ -333,19 +209,20 @@
 
   /* ---------------- Rendering: stat cards ---------------- */
   function renderStatCards(totals, prevTotals) {
-    animateCounter(document.getElementById("cardGanhos"), totals.ganhos, "ganho");
-    animateCounter(document.getElementById("cardGastos"), totals.gastos, "gasto");
-    animateCounter(document.getElementById("cardSaldo"), totals.saldo, "saldo");
-    animateCounter(document.getElementById("cardInvest"), totals.investimentos, "investimento");
+    const cards = document.querySelectorAll(".stat-grid:not(.stat-grid-3) .stat-value[data-counter]");
+    animateCounter(cards[0], totals.ganhos);
+    animateCounter(cards[1], totals.gastos);
+    animateCounter(cards[2], totals.investimentos);
+    animateCounter(cards[3], totals.saldo);
 
     const ganhosVar = pctChange(totals.ganhos, prevTotals.ganhos);
     const gastosVar = pctChange(totals.gastos, prevTotals.gastos);
     const investVar = pctChange(totals.investimentos, prevTotals.investimentos);
 
-    document.getElementById("ganhosSub").textContent = privacyState.ganho ? "Valores ocultos" : trendText(ganhosVar);
-    document.getElementById("gastosSub").textContent = privacyState.gasto ? "Valores ocultos" : trendText(gastosVar, true);
-    document.getElementById("investSub").textContent = privacyState.investimento ? "Valores ocultos" : "Total investido este mês · " + trendText(investVar);
-    document.getElementById("saldoSub").textContent = isValueHidden("saldo") ? "Saldo protegido" : (totals.saldo >= 0 ? "Saldo positivo este mês" : "Saldo negativo este mês");
+    document.getElementById("ganhosSub").textContent = trendText(ganhosVar);
+    document.getElementById("gastosSub").textContent = trendText(gastosVar, true);
+    document.getElementById("investSub").textContent = trendText(investVar);
+    document.getElementById("saldoSub").textContent = totals.saldo >= 0 ? "Saldo positivo este mês" : "Saldo negativo este mês";
   }
 
   function trendText(pct, inverse) {
@@ -355,17 +232,19 @@
     return `${arrow} ${Math.abs(pct).toFixed(1)}% vs mês anterior`;
   }
 
-  /* ---------------- Rendering: evolution chart (Ganhos x Gastos) ---------------- */
+  /* ---------------- Rendering: evolution chart ---------------- */
   function renderEvolutionChart() {
     const labels = [];
     const ganhosData = [];
     const gastosData = [];
+    const investData = [];
 
     for (let m = 0; m <= 11; m++) {
       const list = entriesForMonth(viewYear, m);
       labels.push(MONTH_SHORT[m]);
       ganhosData.push(sumByType(list, "ganho"));
       gastosData.push(sumByType(list, "gasto"));
+      investData.push(sumByType(list, "investimento"));
     }
 
     const ctx = document.getElementById("evolutionChart").getContext("2d");
@@ -377,7 +256,8 @@
         labels,
         datasets: [
           lineDataset("Ganhos", ganhosData, COLORS.ganho),
-          lineDataset("Gastos", gastosData, COLORS.gasto)
+          lineDataset("Gastos", gastosData, COLORS.gasto),
+          lineDataset("Investimentos", investData, COLORS.investimento)
         ]
       },
       options: baseChartOptions()
@@ -426,71 +306,50 @@
           titleFont: { family: "Sora", weight: "700" },
           bodyFont: { family: "Inter" },
           padding: 12, cornerRadius: 10, displayColors: true, boxPadding: 4,
-          callbacks: { label: (ctx) => { const type = ctx.dataset.label === "Ganhos" ? "ganho" : "gasto"; return ` ${ctx.dataset.label}: ${privateBRL(type, ctx.parsed.y)}`; } }
+          callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${formatBRL(ctx.parsed.y)}` }
         }
       },
       scales: {
         x: { grid: { display: false }, ticks: { color: textColor, font: { family: "Inter", size: 11.5 } } },
         y: {
           grid: { color: gridColor }, border: { display: false },
-          ticks: { color: textColor, font: { family: "Inter", size: 11 }, callback: (v) => (privacyState.ganho || privacyState.gasto) ? "••••" : formatBRLShort(v) }
+          ticks: { color: textColor, font: { family: "Inter", size: 11 }, callback: (v) => formatBRLShort(v) }
         }
       }
     };
   }
 
-  /* ---------------- Rendering: donut chart (distribuição dos GANHOS por categoria) ---------------- */
-  function renderGanhosDonutChart(totals, monthList) {
-    const ctx = document.getElementById("ganhosDonutChart").getContext("2d");
-    if (charts.ganhosDonut) charts.ganhosDonut.destroy();
-
-    const centerValue = document.getElementById("ganhosDonutCenterValue");
-
-    const ganhoEntries = monthList.filter((e) => e.type === "ganho");
-    const byCat = {};
-    ganhoEntries.forEach((e) => { byCat[e.category] = (byCat[e.category] || 0) + Number(e.amount); });
-    const sorted = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
-    let labels = sorted.map((s) => s[0]);
-    let data = sorted.map((s) => s[1]);
-    let colors = labels.map((category) => getCategoryColor("ganho", category));
-    centerValue.textContent = privateBRL("ganho", totals.ganhos, true);
-    if (labels.length === 0) { labels = ["Sem ganhos"]; data = [1]; colors = ["#e8e1fa"]; }
-
-    charts.ganhosDonut = new Chart(ctx, {
-      type: "doughnut",
-      data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 3, borderColor: isDark() ? "#1e1440" : "#ffffff", hoverOffset: 6 }] },
-      options: {
-        responsive: true, maintainAspectRatio: false, cutout: "72%",
-        plugins: {
-          legend: {
-            position: "bottom",
-            labels: { usePointStyle: true, pointStyle: "circle", boxWidth: 7, boxHeight: 7, padding: 12, color: isDark() ? "#baacdc" : "#635b7a", font: { family: "Inter", size: 11.5 } }
-          },
-          tooltip: {
-            backgroundColor: isDark() ? "#251a4d" : "#1d0e42", padding: 10, cornerRadius: 10,
-            callbacks: { label: (ctx) => { const total = ctx.dataset.data.reduce((s, v) => s + Number(v), 0); const pct = total ? (Number(ctx.parsed) / total) * 100 : 0; return ` ${ctx.label}: ${privateBRL("ganho", ctx.parsed)}${privacyState.ganho ? "" : ` (${pct.toFixed(1)}%)`}`; } }
-          }
-        }
-      }
-    });
-  }
-
-  /* ---------------- Rendering: donut chart (distribuição dos GASTOS por categoria) ---------------- */
+  /* ---------------- Rendering: donut chart ---------------- */
   function renderDonutChart(totals, monthList) {
     const ctx = document.getElementById("donutChart").getContext("2d");
     if (charts.donut) charts.donut.destroy();
 
+    const subtitle = document.getElementById("donutSubtitle");
+    const toggleLabel = document.getElementById("toggleDonutLabel");
     const centerValue = document.getElementById("donutCenterValue");
 
-    const gastoEntries = monthList.filter((e) => e.type === "gasto");
-    const byCat = {};
-    gastoEntries.forEach((e) => { byCat[e.category] = (byCat[e.category] || 0) + Number(e.amount); });
-    const sorted = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
-    let labels = sorted.map((s) => s[0]);
-    let data = sorted.map((s) => s[1]);
-    let colors = labels.map((category) => getCategoryColor("gasto", category));
-    centerValue.textContent = privateBRL("gasto", totals.gastos, true);
-    if (labels.length === 0) { labels = ["Sem gastos"]; data = [1]; colors = ["#e8e1fa"]; }
+    let labels, data, colors;
+
+    if (!donutShowingCategories) {
+      labels = ["Gastos", "Investimentos"];
+      data = [totals.gastos, totals.investimentos];
+      colors = [COLORS.gasto, COLORS.investimento];
+      subtitle.textContent = "Distribuição do mês";
+      toggleLabel.textContent = "Ver categorias de gastos";
+      centerValue.textContent = formatBRLShort(totals.gastos + totals.investimentos);
+    } else {
+      const gastoEntries = monthList.filter((e) => e.type === "gasto");
+      const byCat = {};
+      gastoEntries.forEach((e) => { byCat[e.category] = (byCat[e.category] || 0) + Number(e.amount); });
+      const sorted = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+      labels = sorted.map((s) => s[0]);
+      data = sorted.map((s) => s[1]);
+      colors = labels.map((_, i) => shadeOfPurpleAndPink(i));
+      subtitle.textContent = "Categorias de gastos do mês";
+      toggleLabel.textContent = "Ver gastos x investimentos";
+      centerValue.textContent = formatBRLShort(totals.gastos);
+      if (labels.length === 0) { labels = ["Sem gastos"]; data = [1]; colors = ["#e8e1fa"]; }
+    }
 
     charts.donut = new Chart(ctx, {
       type: "doughnut",
@@ -504,7 +363,7 @@
           },
           tooltip: {
             backgroundColor: isDark() ? "#251a4d" : "#1d0e42", padding: 10, cornerRadius: 10,
-            callbacks: { label: (ctx) => { const total = ctx.dataset.data.reduce((s, v) => s + Number(v), 0); const pct = total ? (Number(ctx.parsed) / total) * 100 : 0; return ` ${ctx.label}: ${privateBRL("gasto", ctx.parsed)}${privacyState.gasto ? "" : ` (${pct.toFixed(1)}%)`}`; } }
+            callbacks: { label: (ctx) => ` ${ctx.label}: ${formatBRL(ctx.parsed)}` }
           }
         }
       }
@@ -527,7 +386,7 @@
     document.getElementById("resumoRows").innerHTML = rows.map((r) => `
       <div class="resumo-row">
         <span class="r-label"><span class="r-dot" style="background:${r.color}"></span>${r.label}</span>
-        <span class="r-value" style="color:${r.color}">${privateBRL(r.label === "Ganhos" ? "ganho" : r.label === "Gastos" ? "gasto" : r.label === "Investimentos" ? "investimento" : "saldo", r.value)}</span>
+        <span class="r-value" style="color:${r.color}">${formatBRL(r.value)}</span>
       </div>
     `).join("");
 
@@ -535,7 +394,6 @@
   }
 
   function buildResumoPhrase(totals) {
-    if (privacyState.ganho || privacyState.gasto || privacyState.investimento) return "Alguns valores estão ocultos pelo modo de privacidade.";
     const phrases = [];
     if (totals.ganhos > 0) {
       const investPct = (totals.investimentos / totals.ganhos) * 100;
@@ -561,11 +419,10 @@
     const prevH = Math.max((prevValue / maxVal) * 100, 4);
     const prevMonthIdx = prevMonthOf(viewYear, viewMonth).month;
 
-    const hidden = isValueHidden(currType);
     el.innerHTML = `
       <div class="compare-delta ${positiveIsGood ? "positive" : "negative"}">
         <i data-lucide="${delta >= 0 ? "trending-up" : "trending-down"}"></i>
-        ${hidden ? "••••" : `${delta >= 0 ? "+" : ""}${delta.toFixed(1)}%`}
+        ${delta >= 0 ? "+" : ""}${delta.toFixed(1)}%
       </div>
       <div class="compare-bars">
         <div class="compare-bar-col">
@@ -579,11 +436,11 @@
       </div>
       <div class="compare-row">
         <span class="c-label">${MONTH_NAMES[viewMonth]}</span>
-        <span class="c-value" style="color:${color}">${privateBRL(currType, currValue)}</span>
+        <span class="c-value" style="color:${color}">${formatBRL(currValue)}</span>
       </div>
       <div class="compare-row">
         <span class="c-label">${MONTH_NAMES[prevMonthIdx]}</span>
-        <span class="c-value" style="color:${hexToRgba(color,0.75)}">${privateBRL(currType, prevValue)}</span>
+        <span class="c-value" style="color:${hexToRgba(color,0.75)}">${formatBRL(prevValue)}</span>
       </div>
     `;
     refreshIcons();
@@ -636,9 +493,9 @@
       <tr data-id="${e.id}">
         <td class="cell-date">${formatDateBR(e.date)}</td>
         <td class="cell-desc">${escapeHtml(e.description)}</td>
-        <td><span class="category-chip"><span class="category-dot" style="background:${getCategoryColor(e.type, e.category)}"></span>${escapeHtml(e.category)}</span></td>
+        <td><span class="category-chip">${escapeHtml(e.category)}</span></td>
         ${withCategoryTag ? `<td><span class="badge ${e.type}">${TYPE_LABEL[e.type]}</span></td>` : ""}
-        <td class="cell-value ${e.type}">${isValueHidden(e.type) ? privateBRL(e.type, e.amount) : sign + privateBRL(e.type, e.amount)}</td>
+        <td class="cell-value ${e.type}">${sign}${formatBRL(e.amount)}</td>
         <td>
           <div class="row-actions">
             <button class="icon-btn edit-btn" data-id="${e.id}" title="Editar"><i data-lucide="pencil"></i></button>
@@ -665,10 +522,10 @@
 
   /* ---------------- Rendering: type-specific pages ---------------- */
   function renderGanhosPage(monthList, totals) {
-    document.getElementById("ganhosPageTotal").textContent = privateBRL("ganho", totals.ganhos);
-    document.getElementById("ganhosPageYear").textContent = privateBRL("ganho", sumByType(entriesForYear(viewYear), "ganho"));
+    document.getElementById("ganhosPageTotal").textContent = formatBRL(totals.ganhos);
+    document.getElementById("ganhosPageYear").textContent = formatBRL(sumByType(entriesForYear(viewYear), "ganho"));
     const prev = computeTotals(entriesForMonth(...Object.values(prevMonthOf(viewYear, viewMonth))));
-    document.getElementById("ganhosPageVar").textContent = privacyState.ganho ? "••••" : `${pctChange(totals.ganhos, prev.ganhos) >= 0 ? "+" : ""}${pctChange(totals.ganhos, prev.ganhos).toFixed(1)}%`;
+    document.getElementById("ganhosPageVar").textContent = `${pctChange(totals.ganhos, prev.ganhos) >= 0 ? "+" : ""}${pctChange(totals.ganhos, prev.ganhos).toFixed(1)}%`;
 
     const ganhoList = monthList.filter((e) => e.type === "ganho").sort((a, b) => b.date.localeCompare(a.date));
     const body = document.getElementById("ganhosBody");
@@ -676,15 +533,15 @@
     if (ganhoList.length === 0) { body.innerHTML = ""; empty.hidden = false; }
     else { empty.hidden = true; body.innerHTML = ganhoList.map((e) => rowTemplate(e, false)).join(""); attachRowHandlers(body); }
 
-    renderCategoryBarChart("ganhosCategoryChart", ganhoList, "ganho");
+    renderCategoryBarChart("ganhosCategoryChart", ganhoList, COLORS.ganho);
     refreshIcons();
   }
 
   function renderGastosPage(monthList, totals) {
-    document.getElementById("gastosPageTotal").textContent = privateBRL("gasto", totals.gastos);
-    document.getElementById("gastosPageYear").textContent = privateBRL("gasto", sumByType(entriesForYear(viewYear), "gasto"));
+    document.getElementById("gastosPageTotal").textContent = formatBRL(totals.gastos);
+    document.getElementById("gastosPageYear").textContent = formatBRL(sumByType(entriesForYear(viewYear), "gasto"));
     const prev = computeTotals(entriesForMonth(...Object.values(prevMonthOf(viewYear, viewMonth))));
-    document.getElementById("gastosPageVar").textContent = privacyState.gasto ? "••••" : `${pctChange(totals.gastos, prev.gastos) >= 0 ? "+" : ""}${pctChange(totals.gastos, prev.gastos).toFixed(1)}%`;
+    document.getElementById("gastosPageVar").textContent = `${pctChange(totals.gastos, prev.gastos) >= 0 ? "+" : ""}${pctChange(totals.gastos, prev.gastos).toFixed(1)}%`;
 
     const gastoList = monthList.filter((e) => e.type === "gasto").sort((a, b) => b.date.localeCompare(a.date));
     const body = document.getElementById("gastosBody");
@@ -692,11 +549,11 @@
     if (gastoList.length === 0) { body.innerHTML = ""; empty.hidden = false; }
     else { empty.hidden = true; body.innerHTML = gastoList.map((e) => rowTemplate(e, false)).join(""); attachRowHandlers(body); }
 
-    renderCategoryBarChart("gastosCategoryChart", gastoList, "gasto");
+    renderCategoryBarChart("gastosCategoryChart", gastoList, COLORS.gasto);
     refreshIcons();
   }
 
-  function renderCategoryBarChart(canvasId, list, type) {
+  function renderCategoryBarChart(canvasId, list, color) {
     const byCat = {};
     list.forEach((e) => { byCat[e.category] = (byCat[e.category] || 0) + Number(e.amount); });
     const sorted = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
@@ -708,30 +565,28 @@
 
     charts[canvasId] = new Chart(ctx, {
       type: "bar",
-      data: { labels: labels.length ? labels : ["Sem dados"], datasets: [{ data: data.length ? data : [0], backgroundColor: labels.length ? labels.map((category) => getCategoryColor(type, category)) : ["#D8D1E8"], borderRadius: 8, maxBarThickness: 40 }] },
+      data: { labels: labels.length ? labels : ["Sem dados"], datasets: [{ data: data.length ? data : [0], backgroundColor: hexToRgba(color, 0.75), borderRadius: 8, maxBarThickness: 40 }] },
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false }, tooltip: {
           backgroundColor: isDark() ? "#251a4d" : "#1d0e42", padding: 10, cornerRadius: 10,
-          callbacks: { label: (ctx) => { const total = data.reduce((s, v) => s + Number(v), 0); const pct = total ? (Number(ctx.parsed.y) / total) * 100 : 0; return ` ${ctx.label}: ${privateBRL(type, ctx.parsed.y)}${isValueHidden(type) ? "" : ` (${pct.toFixed(1)}%)`}`; } }
+          callbacks: { label: (ctx) => ` ${formatBRL(ctx.parsed.y)}` }
         } },
         scales: {
           x: { grid: { display: false }, ticks: { color: isDark() ? "#baacdc" : "#635b7a", font: { size: 11 } } },
-          y: { grid: { color: isDark() ? "rgba(255,255,255,0.06)" : "rgba(76,31,158,0.06)" }, border: { display: false }, ticks: { color: isDark() ? "#baacdc" : "#635b7a", callback: (v) => isValueHidden(type) ? "••••" : formatBRLShort(v) } }
+          y: { grid: { color: isDark() ? "rgba(255,255,255,0.06)" : "rgba(76,31,158,0.06)" }, border: { display: false }, ticks: { color: isDark() ? "#baacdc" : "#635b7a", callback: (v) => formatBRLShort(v) } }
         }
       }
     });
   }
 
   function renderInvestimentosPage(monthList, totals) {
-    document.getElementById("investPatrimonioTotal").textContent = privateBRL("investimento", sumByType(entries, "investimento"));
-    document.getElementById("investMesTotal").textContent = privateBRL("investimento", totals.investimentos);
+    document.getElementById("investMesTotal").textContent = formatBRL(totals.investimentos);
     const yearTotal = sumByType(entriesForYear(viewYear), "investimento");
-    document.getElementById("investAnoTotal").textContent = privateBRL("investimento", yearTotal);
+    document.getElementById("investAnoTotal").textContent = formatBRL(yearTotal);
     const pct = totals.ganhos > 0 ? (totals.investimentos / totals.ganhos) * 100 : 0;
-    const hideInvestPct = privacyState.investimento || privacyState.ganho;
-    document.getElementById("investPercent").textContent = hideInvestPct ? "••••" : `${pct.toFixed(1)}%`;
-    document.getElementById("investProgressFill").style.width = hideInvestPct ? "0%" : `${Math.min(pct, 100)}%`;
+    document.getElementById("investPercent").textContent = `${pct.toFixed(1)}%`;
+    document.getElementById("investProgressFill").style.width = `${Math.min(pct, 100)}%`;
 
     const investList = monthList.filter((e) => e.type === "investimento").sort((a, b) => b.date.localeCompare(a.date));
     const body = document.getElementById("investBody");
@@ -754,16 +609,14 @@
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false }, tooltip: {
           backgroundColor: isDark() ? "#251a4d" : "#1d0e42", padding: 10, cornerRadius: 10,
-          callbacks: { label: (ctx) => ` ${privateBRL("investimento", ctx.parsed.y)}` }
+          callbacks: { label: (ctx) => ` ${formatBRL(ctx.parsed.y)}` }
         } },
         scales: {
           x: { grid: { display: false }, ticks: { color: isDark() ? "#baacdc" : "#635b7a", font: { size: 11 } } },
-          y: { grid: { color: isDark() ? "rgba(255,255,255,0.06)" : "rgba(76,31,158,0.06)" }, border: { display: false }, ticks: { color: isDark() ? "#baacdc" : "#635b7a", callback: (v) => privacyState.investimento ? "••••" : formatBRLShort(v) } }
+          y: { grid: { color: isDark() ? "rgba(255,255,255,0.06)" : "rgba(76,31,158,0.06)" }, border: { display: false }, ticks: { color: isDark() ? "#baacdc" : "#635b7a", callback: (v) => formatBRLShort(v) } }
         }
       }
     });
-
-    renderCategoryBarChart("investCategoryChart", investList, "investimento");
     refreshIcons();
   }
 
@@ -777,7 +630,6 @@
 
     renderStatCards(totals, prevTotals);
     renderEvolutionChart();
-    renderGanhosDonutChart(totals, monthList);
     renderDonutChart(totals, monthList);
     renderResumo(totals);
     renderCompareBlock("compareGanhos", "ganho", totals.ganhos, prevTotals.ganhos, COLORS.ganho);
@@ -789,8 +641,6 @@
     renderGanhosPage(monthList, totals);
     renderGastosPage(monthList, totals);
     renderInvestimentosPage(monthList, totals);
-    renderPrivacyControls();
-    refreshIcons();
   }
 
   function refreshIcons() {
@@ -837,7 +687,6 @@
     document.getElementById("customCategoryWrap").hidden = true;
     setModalType(currentModalType);
     populateCategorySelect(currentModalType);
-    renderColorPicker(document.getElementById("categoryInput").value);
     openModal(modalOverlay());
   }
 
@@ -862,7 +711,6 @@
     document.getElementById("customCategoryWrap").hidden = true;
     setModalType(currentModalType);
     populateCategorySelect(currentModalType, entry.category);
-    renderColorPicker(entry.category);
     openModal(modalOverlay());
   }
 
@@ -876,7 +724,6 @@
     populateCategorySelect(type);
     document.getElementById("customCategoryWrap").hidden = true;
     document.getElementById("customCategoryInput").value = "";
-    renderColorPicker(document.getElementById("categoryInput").value);
   }
 
   function populateCategorySelect(type, selected) {
@@ -943,8 +790,6 @@
       addCustomCategory(currentModalType, customName);
     }
 
-    const categoryColor = document.getElementById("categoryColorCustom").value;
-
     if (!desc || !amount || amount <= 0 || !date) {
       showToast("Preencha todos os campos corretamente.");
       return;
@@ -959,7 +804,6 @@
       showToast("✓ Lançamento adicionado!");
     }
 
-    setCategoryColor(currentModalType, category, categoryColor);
     saveEntries();
     closeModal(modalOverlay());
 
@@ -1006,7 +850,7 @@
 
   /* ---------------- Export / Import ---------------- */
   function exportData() {
-    const dataStr = JSON.stringify({ version: 2, entries, categoryColors: loadCategoryColors(), customCategories: loadCustomCategories() }, null, 2);
+    const dataStr = JSON.stringify(entries, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -1024,11 +868,8 @@
     reader.onload = () => {
       try {
         const parsed = JSON.parse(reader.result);
-        const importedEntries = Array.isArray(parsed) ? parsed : parsed.entries;
-        if (!Array.isArray(importedEntries)) throw new Error("Formato inválido");
-        if (!Array.isArray(parsed) && parsed.categoryColors) saveCategoryColors(parsed.categoryColors);
-        if (!Array.isArray(parsed) && parsed.customCategories) saveCustomCategories(parsed.customCategories);
-        const valid = importedEntries.filter((e) => e && e.type && e.amount && e.date && e.description);
+        if (!Array.isArray(parsed)) throw new Error("Formato inválido");
+        const valid = parsed.filter((e) => e && e.type && e.amount && e.date && e.description);
         const withNewIds = valid.map((e) => ({
           id: uid(),
           type: e.type, description: e.description, category: e.category || "Outros",
@@ -1036,7 +877,6 @@
         }));
         entries = entries.concat(withNewIds);
         saveEntries();
-        ensureAllCategoryColors();
         showToast(`✓ ${withNewIds.length} lançamentos importados!`);
         renderAll();
       } catch (err) {
@@ -1100,6 +940,12 @@
       renderEntriesTable();
     });
 
+    document.getElementById("toggleDonutBtn").addEventListener("click", () => {
+      donutShowingCategories = !donutShowingCategories;
+      const monthList = entriesForMonth(viewYear, viewMonth);
+      renderDonutChart(computeTotals(monthList), monthList);
+    });
+
     document.getElementById("themeToggle").addEventListener("click", toggleTheme);
     document.getElementById("themeToggleSettings").addEventListener("click", toggleTheme);
 
@@ -1109,24 +955,6 @@
       e.target.value = "";
     });
     document.getElementById("clearDemoBtn").addEventListener("click", clearDemoData);
-
-    document.querySelectorAll("[data-privacy-toggle]").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        togglePrivacy(btn.dataset.privacyToggle);
-      });
-    });
-
-    const investBanner = document.getElementById("investBanner");
-    if (investBanner) {
-      investBanner.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          switchView("investimentos");
-        }
-      });
-    }
 
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {

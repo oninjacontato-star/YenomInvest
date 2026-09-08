@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-<title>YENOM INVEST</title>
+<title>Minha vida financeira</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -23,36 +23,23 @@
       </div>
       <div class="brand-text">
         <strong>YENOM</strong>
-        <span>Invest</span>
+        <span>finanças</span>
       </div>
     </div>
 
     <nav class="nav" id="sidebarNav">
-      <div class="nav-group">
-        <span class="nav-section-label">Finanças</span>
-        <button class="nav-item is-active" data-view="overview">
-          <i data-lucide="home"></i><span>Visão geral</span>
-        </button>
-        <button class="nav-item" data-view="ganhos">
-          <i data-lucide="trending-up"></i><span>Ganhos</span>
-        </button>
-        <button class="nav-item" data-view="gastos">
-          <i data-lucide="trending-down"></i><span>Gastos</span>
-        </button>
-      </div>
-
-      <div class="nav-divider-sidebar"></div>
-
-      <div class="nav-group">
-        <span class="nav-section-label">Investimentos</span>
-        <button class="nav-item" data-view="investimentos">
-          <i data-lucide="line-chart"></i><span>Investimentos</span>
-        </button>
-        <button class="nav-item nav-item-soon" type="button" title="Em breve">
-          <i data-lucide="piggy-bank"></i><span>Dividendos</span>
-          <span class="nav-badge-soon">Em breve</span>
-        </button>
-      </div>
+      <button class="nav-item is-active" data-view="overview">
+        <i data-lucide="home"></i><span>Visão geral</span>
+      </button>
+      <button class="nav-item" data-view="ganhos">
+        <i data-lucide="trending-up"></i><span>Ganhos</span>
+      </button>
+      <button class="nav-item" data-view="gastos">
+        <i data-lucide="trending-down"></i><span>Gastos</span>
+      </button>
+      <button class="nav-item" data-view="investimentos">
+        <i data-lucide="line-chart"></i><span>Investimentos</span>
+      </button>
     </nav>
 
     <div class="sidebar-footer">
@@ -91,14 +78,13 @@
     <!-- VIEW: OVERVIEW -->
     <section class="view is-active" id="view-overview">
 
-      <div class="stat-grid stat-grid-3">
+      <div class="stat-grid">
         <div class="stat-card stat-ganhos">
           <div class="stat-top">
             <div class="stat-icon"><i data-lucide="arrow-up-right"></i></div>
             <span class="stat-name">Ganhos</span>
-            <button class="privacy-toggle" type="button" data-privacy-toggle="ganho" aria-label="Ocultar valores de ganhos" title="Ocultar valores"><i data-lucide="eye"></i></button>
           </div>
-          <div class="stat-value" id="cardGanhos" data-counter>R$ 0,00</div>
+          <div class="stat-value" data-counter data-target="0">R$ 0,00</div>
           <div class="stat-sub" id="ganhosSub">&nbsp;</div>
         </div>
 
@@ -106,10 +92,18 @@
           <div class="stat-top">
             <div class="stat-icon"><i data-lucide="arrow-down-right"></i></div>
             <span class="stat-name">Gastos</span>
-            <button class="privacy-toggle" type="button" data-privacy-toggle="gasto" aria-label="Ocultar valores de gastos" title="Ocultar valores"><i data-lucide="eye"></i></button>
           </div>
-          <div class="stat-value" id="cardGastos" data-counter>R$ 0,00</div>
+          <div class="stat-value" data-counter data-target="0">R$ 0,00</div>
           <div class="stat-sub" id="gastosSub">&nbsp;</div>
+        </div>
+
+        <div class="stat-card stat-invest">
+          <div class="stat-top">
+            <div class="stat-icon"><i data-lucide="sprout"></i></div>
+            <span class="stat-name">Investimentos</span>
+          </div>
+          <div class="stat-value" data-counter data-target="0">R$ 0,00</div>
+          <div class="stat-sub" id="investSub">&nbsp;</div>
         </div>
 
         <div class="stat-card stat-saldo">
@@ -117,27 +111,16 @@
             <div class="stat-icon"><i data-lucide="gem"></i></div>
             <span class="stat-name">Saldo</span>
           </div>
-          <div class="stat-value" id="cardSaldo" data-counter>R$ 0,00</div>
+          <div class="stat-value" data-counter data-target="0">R$ 0,00</div>
           <div class="stat-sub" id="saldoSub">&nbsp;</div>
         </div>
-      </div>
-
-      <div class="invest-banner" data-view="investimentos" id="investBanner" role="button" tabindex="0">
-        <div class="invest-banner-icon"><i data-lucide="trending-up"></i></div>
-        <div class="invest-banner-body">
-          <span class="invest-banner-label">Investimentos</span>
-          <div class="invest-banner-value" id="cardInvest" data-counter>R$ 0,00</div>
-          <span class="invest-banner-sub" id="investSub">Total investido este mês</span>
-        </div>
-        <button class="privacy-toggle privacy-toggle-invest" type="button" data-privacy-toggle="investimento" aria-label="Ocultar valores de investimentos" title="Ocultar valores"><i data-lucide="eye"></i></button>
-        <div class="invest-banner-cta">Ver meus investimentos <i data-lucide="arrow-right"></i></div>
       </div>
 
       <div class="chart-grid">
         <div class="panel panel-chart">
           <div class="panel-head">
             <h2>Evolução financeira</h2>
-            <p>Ganhos e gastos ao longo do ano</p>
+            <p>Ganhos, gastos e investimentos ao longo do ano</p>
           </div>
           <div class="chart-wrap chart-wrap-tall">
             <canvas id="evolutionChart"></canvas>
@@ -146,30 +129,20 @@
 
         <div class="panel panel-donut">
           <div class="panel-head">
-            <h2>De onde vieram meus ganhos?</h2>
-            <p id="ganhosDonutSubtitle">Distribuição por categoria</p>
-          </div>
-          <div class="chart-wrap chart-wrap-donut">
-            <canvas id="ganhosDonutChart"></canvas>
-            <div class="donut-center" id="ganhosDonutCenter">
-              <span id="ganhosDonutCenterValue">R$ 0</span>
-              <small>total em ganhos</small>
-            </div>
-          </div>
-        </div>
-
-        <div class="panel panel-donut">
-          <div class="panel-head">
-            <h2>Para onde foram meus gastos?</h2>
-            <p id="donutSubtitle">Distribuição por categoria</p>
+            <h2>Para onde foi meu dinheiro?</h2>
+            <p id="donutSubtitle">Distribuição do mês</p>
           </div>
           <div class="chart-wrap chart-wrap-donut">
             <canvas id="donutChart"></canvas>
             <div class="donut-center" id="donutCenter">
               <span id="donutCenterValue">R$ 0</span>
-              <small>total em gastos</small>
+              <small>total movimentado</small>
             </div>
           </div>
+          <button class="link-btn" id="toggleDonutBtn">
+            <i data-lucide="pie-chart"></i>
+            <span id="toggleDonutLabel">Ver categorias de gastos</span>
+          </button>
         </div>
       </div>
 
@@ -248,7 +221,7 @@
       </div>
       <div class="stat-grid stat-grid-3">
         <div class="stat-card stat-ganhos">
-          <div class="stat-top"><div class="stat-icon"><i data-lucide="arrow-up-right"></i></div><span class="stat-name">Total do mês</span><button class="privacy-toggle" type="button" data-privacy-toggle="ganho" aria-label="Ocultar valores de ganhos" title="Ocultar valores"><i data-lucide="eye"></i></button></div>
+          <div class="stat-top"><div class="stat-icon"><i data-lucide="arrow-up-right"></i></div><span class="stat-name">Total do mês</span></div>
           <div class="stat-value" id="ganhosPageTotal">R$ 0,00</div>
         </div>
         <div class="stat-card stat-neutral">
@@ -282,7 +255,7 @@
       </div>
       <div class="stat-grid stat-grid-3">
         <div class="stat-card stat-gastos">
-          <div class="stat-top"><div class="stat-icon"><i data-lucide="arrow-down-right"></i></div><span class="stat-name">Total do mês</span><button class="privacy-toggle" type="button" data-privacy-toggle="gasto" aria-label="Ocultar valores de gastos" title="Ocultar valores"><i data-lucide="eye"></i></button></div>
+          <div class="stat-top"><div class="stat-icon"><i data-lucide="arrow-down-right"></i></div><span class="stat-name">Total do mês</span></div>
           <div class="stat-value" id="gastosPageTotal">R$ 0,00</div>
         </div>
         <div class="stat-card stat-neutral">
@@ -312,18 +285,8 @@
     <section class="view" id="view-investimentos">
       <div class="page-header">
         <h2>Investimentos</h2>
-        <p>Seu dinheiro trabalhando para construir patrimônio.</p>
+        <p>Quanto do seu dinheiro está trabalhando por você</p>
       </div>
-
-      <div class="invest-hero">
-        <div class="invest-hero-icon"><i data-lucide="trending-up"></i></div>
-        <div class="invest-hero-body">
-          <span class="invest-hero-label">Seu patrimônio</span>
-          <div class="invest-hero-value" id="investPatrimonioTotal">R$ 0,00</div>
-          <span class="invest-hero-sub">Total investido em todos os períodos</span>
-        </div>
-      </div>
-
       <div class="stat-grid stat-grid-3">
         <div class="stat-card stat-invest">
           <div class="stat-top"><div class="stat-icon"><i data-lucide="sprout"></i></div><span class="stat-name">Investido este mês</span></div>
@@ -339,22 +302,10 @@
           <div class="progress-bar"><div class="progress-fill" id="investProgressFill"></div></div>
         </div>
       </div>
-
-      <p class="invest-note">
-        <i data-lucide="info"></i>
-        Investimentos não são considerados gastos. Eles representam dinheiro direcionado para construção de patrimônio e, por isso, ficam separados do seu saldo financeiro.
-      </p>
-
       <div class="panel">
         <div class="panel-head"><h2>Evolução dos investimentos</h2><p>Valor investido por mês</p></div>
         <div class="chart-wrap chart-wrap-mid"><canvas id="investEvolutionChart"></canvas></div>
       </div>
-
-      <div class="panel">
-        <div class="panel-head"><h2>Categorias de investimento</h2><p>Distribuição por tipo de ativo</p></div>
-        <div class="chart-wrap chart-wrap-mid"><canvas id="investCategoryChart"></canvas></div>
-      </div>
-
       <div class="panel">
         <div class="panel-head"><h2>Lançamentos de investimento</h2></div>
         <div class="table-wrap">
@@ -447,18 +398,14 @@
       <input type="hidden" id="entryId" />
 
       <div class="type-toggle" id="typeToggle">
-        <span class="type-group-label">Finanças</span>
-        <div class="type-toggle-row">
-          <button type="button" class="type-opt type-opt-ganho is-active" data-type="ganho">
-            <i data-lucide="arrow-up-right"></i><span>Ganho</span>
-          </button>
-          <button type="button" class="type-opt type-opt-gasto" data-type="gasto">
-            <i data-lucide="arrow-down-right"></i><span>Gasto</span>
-          </button>
-        </div>
-        <span class="type-group-label type-group-label-invest">Investimentos</span>
-        <button type="button" class="type-opt type-opt-investimento type-opt-investimento-full" data-type="investimento">
-          <i data-lucide="gem"></i><span>Investimento</span>
+        <button type="button" class="type-opt type-opt-ganho is-active" data-type="ganho">
+          <i data-lucide="arrow-up-right"></i><span>Ganho</span>
+        </button>
+        <button type="button" class="type-opt type-opt-gasto" data-type="gasto">
+          <i data-lucide="arrow-down-right"></i><span>Gasto</span>
+        </button>
+        <button type="button" class="type-opt type-opt-investimento" data-type="investimento">
+          <i data-lucide="sprout"></i><span>Investimento</span>
         </button>
       </div>
 
@@ -489,18 +436,6 @@
       <div class="field" id="customCategoryWrap" hidden>
         <label for="customCategoryInput">Nome da categoria personalizada</label>
         <input type="text" id="customCategoryInput" placeholder="Ex: Pet, Viagem..." />
-      </div>
-
-      <div class="field category-color-field">
-        <label>Cor da categoria</label>
-        <div class="category-color-row">
-          <div class="category-color-picker" id="categoryColorPicker" aria-label="Paleta de cores"></div>
-          <label class="custom-color-control" title="Escolher cor personalizada">
-            <input type="color" id="categoryColorCustom" value="#8B5CF6" />
-            <span>Personalizada</span>
-          </label>
-        </div>
-        <small>A cor fica salva para esta categoria e será usada nos gráficos e tabelas.</small>
       </div>
 
       <div class="modal-actions">
