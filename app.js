@@ -221,6 +221,46 @@ try {
     showAuth("login", "Você saiu da sua conta.", "success");
   }
 
+  async function startProCheckout() {
+    const btn = document.getElementById("subscribeProBtn");
+    if (!btn || btn.disabled) return;
+
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.textContent = "Abrindo checkout...";
+
+    try {
+      if (!supabaseClient) throw new Error("Supabase indisponível.");
+
+      const { data, error } = await supabaseClient.auth.getSession();
+      if (error) throw error;
+      const accessToken = data && data.session && data.session.access_token;
+      if (!accessToken) throw new Error("Sua sessão expirou. Entre novamente na sua conta.");
+
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout-session`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${accessToken}`,
+          "apikey": SUPABASE_KEY,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({})
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Não foi possível iniciar o pagamento.");
+      if (!result.url || !/^https:\/\//i.test(result.url)) throw new Error("A Stripe não retornou um checkout válido.");
+
+      window.location.assign(result.url);
+    } catch (error) {
+      console.error("[YENOM] Erro ao abrir checkout PRO:", error);
+      showToast(error && error.message ? error.message : "Não foi possível abrir o checkout. Tente novamente.");
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+      refreshIcons();
+    }
+  }
+
   function setupAuthUI() {
     document.getElementById("authForm").addEventListener("submit", handleAuthSubmit);
     document.getElementById("authSwitchBtn").addEventListener("click", () => {
@@ -1644,6 +1684,9 @@ try {
       categoryFilter = e.target.value;
       renderEntriesTable();
     });
+
+    const subscribeProBtn = document.getElementById("subscribeProBtn");
+    if (subscribeProBtn) subscribeProBtn.addEventListener("click", startProCheckout);
 
     document.getElementById("themeToggle").addEventListener("click", toggleTheme);
     document.getElementById("themeToggleSettings").addEventListener("click", toggleTheme);
