@@ -1,3 +1,10 @@
+const SUPABASE_URL = "https://kxhhyiilzumpecugtjlx.supabase.co";
+const SUPABASE_KEY = "sb_publishable_cAg5hvL_PIepbUlJ-9cxiQ_RwG328UX";
+
+const supabaseClient = window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_KEY
+);
 /* ============================================================
    YENOM INVEST · Controle financeiro pessoal
    ============================================================ */
