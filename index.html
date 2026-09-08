@@ -14,7 +14,54 @@
 
   <body>
 
-<div class="app" id="app">
+<!-- AUTENTICAÇÃO SUPABASE -->
+<section class="auth-screen" id="authScreen" aria-label="Acesso ao YENOM INVEST">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="brand-mark">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 17L10 11L14 15L20 8" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 8H20V14" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="brand-text">
+        <strong>YENOM</strong>
+        <span>Invest</span>
+      </div>
+    </div>
+
+    <div class="auth-copy">
+      <h1 id="authTitle">Entrar</h1>
+      <p id="authSubtitle">Acesse sua conta para continuar.</p>
+    </div>
+
+    <form id="authForm" class="auth-form" novalidate>
+      <div class="field" id="authEmailField">
+        <label for="authEmail">E-mail</label>
+        <input id="authEmail" type="email" autocomplete="email" placeholder="seu@email.com" required />
+      </div>
+
+      <div class="field" id="authPasswordField">
+        <label for="authPassword">Senha</label>
+        <input id="authPassword" type="password" autocomplete="current-password" placeholder="Sua senha" minlength="6" required />
+      </div>
+
+      <div class="field" id="authNewPasswordField" hidden>
+        <label for="authNewPassword">Nova senha</label>
+        <input id="authNewPassword" type="password" autocomplete="new-password" placeholder="Crie uma nova senha" minlength="6" />
+      </div>
+
+      <p class="auth-message" id="authMessage" role="status" aria-live="polite"></p>
+
+      <button class="btn-add auth-primary" type="submit" id="authSubmitBtn">Entrar</button>
+      <button class="auth-link auth-forgot" type="button" id="forgotPasswordBtn">Esqueci minha senha</button>
+    </form>
+
+    <div class="auth-switch" id="authSwitchWrap">
+      <span id="authSwitchText">Ainda não tem uma conta?</span>
+      <button class="auth-link" type="button" id="authSwitchBtn">Criar conta</button>
+    </div>
+  </div>
+</section>
+
+<div class="app" id="app" hidden>
 
   <!-- SIDEBAR (desktop) -->
   <aside class="sidebar">
@@ -374,6 +421,18 @@
       </div>
 
       <div class="panel settings-panel">
+        <div class="settings-row account-settings-row">
+          <div>
+            <h3>Minha conta</h3>
+            <p>Conectado como <strong id="loggedUserEmail">—</strong></p>
+          </div>
+          <button class="btn-danger" id="logoutBtn" type="button">
+            <i data-lucide="log-out"></i><span>Sair</span>
+          </button>
+        </div>
+
+        <div class="divider"></div>
+
         <div class="settings-row">
           <div>
             <h3>Aparência</h3>

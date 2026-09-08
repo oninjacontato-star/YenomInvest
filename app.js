@@ -1,17 +1,23 @@
 const SUPABASE_URL = "https://kxhhyiilzumpecugtjlx.supabase.co";
 const SUPABASE_KEY = "sb_publishable_cAg5hvL_PIepbUlJ-9cxiQ_RwG328UX";
 
-// Supabase é opcional neste momento. Uma falha de carregamento/configuração
-// nunca deve impedir a interface local do YENOM INVEST de iniciar.
+// Supabase Auth protege o acesso ao YENOM INVEST. Se a biblioteca não carregar,
+// o dashboard permanece bloqueado e a tela de acesso informa o problema.
 let supabaseClient = null;
 try {
   if (window.supabase && typeof window.supabase.createClient === "function") {
-    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    });
   } else {
-    console.warn("[YENOM] Supabase indisponível; aplicativo iniciado em modo local.");
+    console.warn("[YENOM] Supabase indisponível; autenticação não poderá iniciar.");
   }
 } catch (error) {
-  console.warn("[YENOM] Não foi possível inicializar o Supabase; aplicativo seguirá em modo local.", error);
+  console.warn("[YENOM] Não foi possível inicializar o Supabase; autenticação indisponível.", error);
 }
 /* ============================================================
    YENOM INVEST · Controle financeiro pessoal
@@ -19,6 +25,227 @@ try {
 
 (function () {
   "use strict";
+
+  /* ---------------- Authentication ---------------- */
+  let authMode = "login";
+  let currentSession = null;
+  let dashboardInitialized = false;
+
+  const authScreen = () => document.getElementById("authScreen");
+  const appRoot = () => document.getElementById("app");
+
+  function setAuthMessage(message = "", type = "") {
+    const el = document.getElementById("authMessage");
+    if (!el) return;
+    el.textContent = message;
+    el.classList.toggle("is-error", type === "error");
+    el.classList.toggle("is-success", type === "success");
+  }
+
+  function setAuthLoading(isLoading) {
+    const btn = document.getElementById("authSubmitBtn");
+    if (!btn) return;
+    btn.disabled = isLoading;
+    if (isLoading) {
+      btn.dataset.previousText = btn.textContent;
+      btn.textContent = "Aguarde...";
+    } else if (btn.dataset.previousText) {
+      btn.textContent = btn.dataset.previousText;
+      delete btn.dataset.previousText;
+    }
+  }
+
+  function setAuthMode(mode, message = "", messageType = "") {
+    authMode = mode;
+    const title = document.getElementById("authTitle");
+    const subtitle = document.getElementById("authSubtitle");
+    const emailField = document.getElementById("authEmailField");
+    const passwordField = document.getElementById("authPasswordField");
+    const newPasswordField = document.getElementById("authNewPasswordField");
+    const passwordInput = document.getElementById("authPassword");
+    const newPasswordInput = document.getElementById("authNewPassword");
+    const submit = document.getElementById("authSubmitBtn");
+    const forgot = document.getElementById("forgotPasswordBtn");
+    const switchWrap = document.getElementById("authSwitchWrap");
+    const switchText = document.getElementById("authSwitchText");
+    const switchBtn = document.getElementById("authSwitchBtn");
+
+    emailField.hidden = mode === "update-password";
+    passwordField.hidden = mode === "recovery" || mode === "update-password";
+    newPasswordField.hidden = mode !== "update-password";
+    passwordInput.required = mode === "login" || mode === "signup";
+    newPasswordInput.required = mode === "update-password";
+    forgot.hidden = mode !== "login";
+    switchWrap.hidden = mode === "update-password";
+
+    if (mode === "signup") {
+      title.textContent = "Criar conta";
+      subtitle.textContent = "Crie sua conta para acessar o YENOM INVEST.";
+      submit.textContent = "Criar conta";
+      passwordInput.autocomplete = "new-password";
+      switchText.textContent = "Já tem uma conta?";
+      switchBtn.textContent = "Entrar";
+    } else if (mode === "recovery") {
+      title.textContent = "Recuperar senha";
+      subtitle.textContent = "Informe seu e-mail para receber o link de recuperação.";
+      submit.textContent = "Enviar e-mail de recuperação";
+      switchText.textContent = "Lembrou sua senha?";
+      switchBtn.textContent = "Entrar";
+      switchWrap.hidden = false;
+    } else if (mode === "update-password") {
+      title.textContent = "Criar nova senha";
+      subtitle.textContent = "Digite uma nova senha para sua conta.";
+      submit.textContent = "Salvar nova senha";
+    } else {
+      title.textContent = "Entrar";
+      subtitle.textContent = "Acesse sua conta para continuar.";
+      submit.textContent = "Entrar";
+      passwordInput.autocomplete = "current-password";
+      switchText.textContent = "Ainda não tem uma conta?";
+      switchBtn.textContent = "Criar conta";
+    }
+
+    setAuthMessage(message, messageType);
+  }
+
+  function showAuth(mode = "login", message = "", messageType = "") {
+    currentSession = null;
+    appRoot().hidden = true;
+    authScreen().hidden = false;
+    setAuthMode(mode, message, messageType);
+    refreshIcons();
+  }
+
+  function showDashboard(session) {
+    if (!session || !session.user) {
+      showAuth("login");
+      return;
+    }
+    currentSession = session;
+    const emailEl = document.getElementById("loggedUserEmail");
+    if (emailEl) emailEl.textContent = session.user.email || "Usuário autenticado";
+    authScreen().hidden = true;
+    appRoot().hidden = false;
+    if (!dashboardInitialized) {
+      initDashboard();
+      dashboardInitialized = true;
+    } else {
+      renderAll();
+      refreshIcons();
+    }
+  }
+
+  async function handleAuthSubmit(event) {
+    event.preventDefault();
+    if (!supabaseClient) {
+      setAuthMessage("Não foi possível conectar ao sistema de autenticação. Recarregue a página e tente novamente.", "error");
+      return;
+    }
+
+    const email = document.getElementById("authEmail").value.trim();
+    const password = document.getElementById("authPassword").value;
+    const newPassword = document.getElementById("authNewPassword").value;
+    setAuthMessage();
+    setAuthLoading(true);
+
+    try {
+      if (authMode === "signup") {
+        if (!email || password.length < 6) throw new Error("Informe um e-mail válido e uma senha com pelo menos 6 caracteres.");
+        const { data, error } = await supabaseClient.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: window.location.origin + window.location.pathname }
+        });
+        if (error) throw error;
+        if (data.session) {
+          showDashboard(data.session);
+        } else {
+          setAuthMode("login", "Conta criada. Confira seu e-mail para confirmar o cadastro antes de entrar.", "success");
+        }
+      } else if (authMode === "recovery") {
+        if (!email) throw new Error("Informe o seu e-mail.");
+        const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin + window.location.pathname
+        });
+        if (error) throw error;
+        setAuthMessage("Enviamos um link de recuperação para o seu e-mail.", "success");
+      } else if (authMode === "update-password") {
+        if (newPassword.length < 6) throw new Error("A nova senha precisa ter pelo menos 6 caracteres.");
+        const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
+        if (error) throw error;
+        document.getElementById("authNewPassword").value = "";
+        setAuthMessage("Senha atualizada com sucesso.", "success");
+        const { data } = await supabaseClient.auth.getSession();
+        if (data.session) showDashboard(data.session);
+      } else {
+        if (!email || !password) throw new Error("Informe seu e-mail e sua senha.");
+        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        showDashboard(data.session);
+      }
+    } catch (error) {
+      console.error("[YENOM] Erro de autenticação:", error);
+      const fallback = authMode === "signup" ? "Não foi possível criar a conta." : authMode === "recovery" ? "Não foi possível enviar o e-mail de recuperação." : authMode === "update-password" ? "Não foi possível atualizar a senha." : "Não foi possível entrar. Verifique seus dados.";
+      setAuthMessage(error && error.message ? error.message : fallback, "error");
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function logout() {
+    if (!supabaseClient) return;
+    const { error } = await supabaseClient.auth.signOut();
+    if (error) {
+      showToast("Não foi possível sair. Tente novamente.");
+      return;
+    }
+    showAuth("login", "Você saiu da sua conta.", "success");
+  }
+
+  function setupAuthUI() {
+    document.getElementById("authForm").addEventListener("submit", handleAuthSubmit);
+    document.getElementById("authSwitchBtn").addEventListener("click", () => {
+      setAuthMode(authMode === "signup" ? "login" : authMode === "login" ? "signup" : "login");
+    });
+    document.getElementById("forgotPasswordBtn").addEventListener("click", () => setAuthMode("recovery"));
+    document.getElementById("logoutBtn").addEventListener("click", logout);
+  }
+
+  async function initAuth() {
+    const savedTheme = localStorage.getItem(THEME_KEY) || "light";
+    document.documentElement.setAttribute("data-theme", savedTheme);
+    setupAuthUI();
+
+    if (!supabaseClient) {
+      showAuth("login", "O sistema de autenticação não carregou. Verifique sua conexão e recarregue a página.", "error");
+      return;
+    }
+
+    supabaseClient.auth.onAuthStateChange((event, session) => {
+      window.setTimeout(() => {
+        if (event === "PASSWORD_RECOVERY") {
+          currentSession = session;
+          appRoot().hidden = true;
+          authScreen().hidden = false;
+          setAuthMode("update-password");
+        } else if (event === "SIGNED_OUT") {
+          showAuth("login");
+        } else if ((event === "SIGNED_IN" || event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED") && session) {
+          showDashboard(session);
+        }
+      }, 0);
+    });
+
+    try {
+      const { data, error } = await supabaseClient.auth.getSession();
+      if (error) throw error;
+      if (data.session) showDashboard(data.session);
+      else showAuth("login");
+    } catch (error) {
+      console.error("[YENOM] Falha ao restaurar sessão:", error);
+      showAuth("login", "Não foi possível verificar sua sessão. Tente entrar novamente.", "error");
+    }
+  }
 
   /* ---------------- Constants ---------------- */
   const STORAGE_KEY = "yenom_finance_entries_v1";
@@ -1185,7 +1412,7 @@ try {
   }
 
   /* ---------------- Init ---------------- */
-  function init() {
+  function initDashboard() {
     const savedTheme = localStorage.getItem(THEME_KEY) || "light";
     document.documentElement.setAttribute("data-theme", savedTheme);
 
@@ -1203,8 +1430,8 @@ try {
   }
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
+    document.addEventListener("DOMContentLoaded", initAuth);
   } else {
-    init();
+    initAuth();
   }
 })();
