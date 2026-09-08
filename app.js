@@ -1,10 +1,18 @@
 const SUPABASE_URL = "https://kxhhyiilzumpecugtjlx.supabase.co";
 const SUPABASE_KEY = "sb_publishable_cAg5hvL_PIepbUlJ-9cxiQ_RwG328UX";
 
-const supabaseClient = window.supabase.createClient(
-    SUPABASE_URL,
-    SUPABASE_KEY
-);
+// Supabase é opcional neste momento. Uma falha de carregamento/configuração
+// nunca deve impedir a interface local do YENOM INVEST de iniciar.
+let supabaseClient = null;
+try {
+  if (window.supabase && typeof window.supabase.createClient === "function") {
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  } else {
+    console.warn("[YENOM] Supabase indisponível; aplicativo iniciado em modo local.");
+  }
+} catch (error) {
+  console.warn("[YENOM] Não foi possível inicializar o Supabase; aplicativo seguirá em modo local.", error);
+}
 /* ============================================================
    YENOM INVEST · Controle financeiro pessoal
    ============================================================ */
@@ -45,6 +53,24 @@ const supabaseClient = window.supabase.createClient(
   function getComputedCssVar(name) {
     try { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
     catch (e) { return null; }
+  }
+
+  function safeRun(label, fn) {
+    try { return fn(); }
+    catch (error) {
+      console.error(`[YENOM] Falha isolada em ${label}:`, error);
+      return null;
+    }
+  }
+
+  function chartAvailable() {
+    return typeof window.Chart === "function";
+  }
+
+  function canvasContext(id) {
+    const canvas = document.getElementById(id);
+    if (!canvas || typeof canvas.getContext !== "function") return null;
+    return canvas.getContext("2d");
   }
 
   /* ---------------- State ---------------- */
@@ -375,7 +401,9 @@ const supabaseClient = window.supabase.createClient(
       gastosData.push(sumByType(list, "gasto"));
     }
 
-    const ctx = document.getElementById("evolutionChart").getContext("2d");
+    if (!chartAvailable()) return;
+    const ctx = canvasContext("evolutionChart");
+    if (!ctx) return;
     if (charts.evolution) charts.evolution.destroy();
 
     charts.evolution = new Chart(ctx, {
@@ -448,7 +476,9 @@ const supabaseClient = window.supabase.createClient(
 
   /* ---------------- Rendering: donut chart (distribuição dos GANHOS por categoria) ---------------- */
   function renderGanhosDonutChart(totals, monthList) {
-    const ctx = document.getElementById("ganhosDonutChart").getContext("2d");
+    if (!chartAvailable()) return;
+    const ctx = canvasContext("ganhosDonutChart");
+    if (!ctx) return;
     if (charts.ganhosDonut) charts.ganhosDonut.destroy();
 
     const centerValue = document.getElementById("ganhosDonutCenterValue");
@@ -484,7 +514,9 @@ const supabaseClient = window.supabase.createClient(
 
   /* ---------------- Rendering: donut chart (distribuição dos GASTOS por categoria) ---------------- */
   function renderDonutChart(totals, monthList) {
-    const ctx = document.getElementById("donutChart").getContext("2d");
+    if (!chartAvailable()) return;
+    const ctx = canvasContext("donutChart");
+    if (!ctx) return;
     if (charts.donut) charts.donut.destroy();
 
     const centerValue = document.getElementById("donutCenterValue");
@@ -710,7 +742,9 @@ const supabaseClient = window.supabase.createClient(
     const labels = sorted.map((s) => s[0]);
     const data = sorted.map((s) => s[1]);
 
-    const ctx = document.getElementById(canvasId).getContext("2d");
+    if (!chartAvailable()) return;
+    const ctx = canvasContext(canvasId);
+    if (!ctx) return;
     if (charts[canvasId]) charts[canvasId].destroy();
 
     charts[canvasId] = new Chart(ctx, {
@@ -752,7 +786,9 @@ const supabaseClient = window.supabase.createClient(
       labels.push(MONTH_SHORT[m]);
       data.push(sumByType(entriesForMonth(viewYear, m), "investimento"));
     }
-    const ctx = document.getElementById("investEvolutionChart").getContext("2d");
+    if (!chartAvailable()) return;
+    const ctx = canvasContext("investEvolutionChart");
+    if (!ctx) return;
     if (charts.investEvo) charts.investEvo.destroy();
     charts.investEvo = new Chart(ctx, {
       type: "bar",
@@ -776,28 +812,28 @@ const supabaseClient = window.supabase.createClient(
 
   /* ---------------- Master render ---------------- */
   function renderAll() {
-    renderMonthLabel();
+    safeRun("cabeçalho/mês", renderMonthLabel);
     const monthList = entriesForMonth(viewYear, viewMonth);
     const totals = computeTotals(monthList);
     const prev = prevMonthOf(viewYear, viewMonth);
     const prevTotals = computeTotals(entriesForMonth(prev.year, prev.month));
 
-    renderStatCards(totals, prevTotals);
-    renderEvolutionChart();
-    renderGanhosDonutChart(totals, monthList);
-    renderDonutChart(totals, monthList);
-    renderResumo(totals);
-    renderCompareBlock("compareGanhos", "ganho", totals.ganhos, prevTotals.ganhos, COLORS.ganho);
-    renderCompareBlock("compareGastos", "gasto", totals.gastos, prevTotals.gastos, COLORS.gasto);
+    safeRun("cards de resumo", () => renderStatCards(totals, prevTotals));
+    safeRun("gráfico de evolução", renderEvolutionChart);
+    safeRun("gráfico de ganhos", () => renderGanhosDonutChart(totals, monthList));
+    safeRun("gráfico de gastos", () => renderDonutChart(totals, monthList));
+    safeRun("resumo mensal", () => renderResumo(totals));
+    safeRun("comparativo de ganhos", () => renderCompareBlock("compareGanhos", "ganho", totals.ganhos, prevTotals.ganhos, COLORS.ganho));
+    safeRun("comparativo de gastos", () => renderCompareBlock("compareGastos", "gasto", totals.gastos, prevTotals.gastos, COLORS.gasto));
 
-    renderCategoryFilterOptions();
-    renderEntriesTable();
+    safeRun("filtro de categorias", renderCategoryFilterOptions);
+    safeRun("tabela de lançamentos", renderEntriesTable);
 
-    renderGanhosPage(monthList, totals);
-    renderGastosPage(monthList, totals);
-    renderInvestimentosPage(monthList, totals);
-    renderPrivacyControls();
-    refreshIcons();
+    safeRun("página de ganhos", () => renderGanhosPage(monthList, totals));
+    safeRun("página de gastos", () => renderGastosPage(monthList, totals));
+    safeRun("página de investimentos", () => renderInvestimentosPage(monthList, totals));
+    safeRun("controles de privacidade", renderPrivacyControls);
+    safeRun("ícones", refreshIcons);
   }
 
   function refreshIcons() {
@@ -806,9 +842,14 @@ const supabaseClient = window.supabase.createClient(
 
   /* ---------------- Navigation ---------------- */
   function switchView(view) {
+    const targetView = document.getElementById(`view-${view}`);
+    if (!targetView) {
+      console.warn(`[YENOM] View inexistente ignorada: ${view}`);
+      return;
+    }
     currentView = view;
     document.querySelectorAll(".view").forEach((v) => v.classList.remove("is-active"));
-    document.getElementById(`view-${view}`).classList.add("is-active");
+    targetView.classList.add("is-active");
 
     document.querySelectorAll(".nav-item[data-view]").forEach((btn) => btn.classList.toggle("is-active", btn.dataset.view === view));
     document.querySelectorAll(".bnav-item[data-view]").forEach((btn) => btn.classList.toggle("is-active", btn.dataset.view === view));
@@ -1148,10 +1189,10 @@ const supabaseClient = window.supabase.createClient(
     const savedTheme = localStorage.getItem(THEME_KEY) || "light";
     document.documentElement.setAttribute("data-theme", savedTheme);
 
-    loadEntries();
+    safeRun("carregamento de lançamentos", loadEntries);
 
-    setupNavigation();
-    setupEventListeners();
+    safeRun("navegação", setupNavigation);
+    safeRun("eventos da interface", setupEventListeners);
 
     document.getElementById("themeIcon").setAttribute("data-lucide", savedTheme === "dark" ? "sun" : "moon");
     document.getElementById("themeLabel").textContent = savedTheme === "dark" ? "Modo claro" : "Modo escuro";
