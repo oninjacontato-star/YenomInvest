@@ -30,6 +30,8 @@ try {
   let authMode = "login";
   let currentSession = null;
   let dashboardInitialized = false;
+  let loadedTransactionsUserId = null;
+  let transactionsLoadPromise = null;
 
   const authScreen = () => document.getElementById("authScreen");
   const appRoot = () => document.getElementById("app");
@@ -110,28 +112,45 @@ try {
 
   function showAuth(mode = "login", message = "", messageType = "") {
     currentSession = null;
+    loadedTransactionsUserId = null;
+    transactionsLoadPromise = null;
+    entries = [];
     appRoot().hidden = true;
     authScreen().hidden = false;
     setAuthMode(mode, message, messageType);
     refreshIcons();
   }
 
-  function showDashboard(session) {
+  async function showDashboard(session) {
     if (!session || !session.user) {
       showAuth("login");
       return;
     }
+
+    const userChanged = loadedTransactionsUserId && loadedTransactionsUserId !== session.user.id;
     currentSession = session;
+    if (userChanged) entries = [];
+
     const emailEl = document.getElementById("loggedUserEmail");
     if (emailEl) emailEl.textContent = session.user.email || "Usuário autenticado";
     authScreen().hidden = true;
     appRoot().hidden = false;
+
     if (!dashboardInitialized) {
       initDashboard();
       dashboardInitialized = true;
-    } else {
+    }
+
+    try {
+      await ensureTransactionsLoaded(session);
       renderAll();
       refreshIcons();
+    } catch (error) {
+      console.error("[YENOM] Falha ao carregar lançamentos do Supabase:", error);
+      entries = [];
+      loadedTransactionsUserId = null;
+      renderAll();
+      showToast("Não foi possível carregar seus lançamentos. Verifique sua conexão e tente novamente.");
     }
   }
 
@@ -248,7 +267,11 @@ try {
   }
 
   /* ---------------- Constants ---------------- */
+  // Mantido apenas para migrar, sem apagar, lançamentos de versões antigas.
+  // O Supabase é a fonte oficial dos dados financeiros a partir desta versão.
   const STORAGE_KEY = "yenom_finance_entries_v1";
+  const LEGACY_OWNER_KEY = "yenom_legacy_transactions_owner_v1";
+  const LEGACY_MIGRATION_PREFIX = "yenom_legacy_transactions_migrated_v1:";
   const THEME_KEY = "yenom_finance_theme_v1";
   const CUSTOM_CATS_KEY = "yenom_finance_customcats_v1";
   const CATEGORY_COLORS_KEY = "yenom_category_colors_v1";
@@ -353,18 +376,155 @@ try {
     return DEFAULT_CATEGORIES[type][0];
   }
 
-  /* ---------------- Persistence ---------------- */
-  function loadEntries() {
+  /* ---------------- Transactions · Supabase ---------------- */
+  const TRANSACTION_COLUMNS = "id,user_id,type,description,amount,category,transaction_date,created_at";
+
+  function authenticatedUserId() {
+    const userId = currentSession && currentSession.user && currentSession.user.id;
+    if (!userId) throw new Error("Sua sessão não está disponível. Entre novamente na sua conta.");
+    return userId;
+  }
+
+  function mapDbTransaction(row) {
+    return {
+      id: String(row.id),
+      type: row.type,
+      description: row.description || "",
+      amount: Number(row.amount) || 0,
+      category: row.category || "Outros",
+      date: row.transaction_date,
+      createdAt: row.created_at || null,
+      demo: false
+    };
+  }
+
+  function transactionPayload(entry, userId) {
+    return {
+      user_id: userId,
+      type: entry.type,
+      description: entry.description,
+      amount: Number(entry.amount),
+      category: entry.category || "Outros",
+      transaction_date: entry.date
+    };
+  }
+
+  function readLegacyEntries() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      entries = raw ? JSON.parse(raw) : [];
-    } catch (e) {
-      entries = [];
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      console.warn("[YENOM] Não foi possível ler os lançamentos antigos do navegador.", error);
+      return [];
     }
   }
 
-  function saveEntries() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+  function transactionSignature(entry) {
+    const cents = Math.round((Number(entry.amount) || 0) * 100);
+    return [entry.type, String(entry.description || "").trim(), cents, String(entry.category || "Outros").trim(), entry.date].join("\u001f");
+  }
+
+  function validLegacyEntries() {
+    const allowedTypes = new Set(["ganho", "gasto", "investimento"]);
+    return readLegacyEntries().filter((entry) =>
+      entry && !entry.demo && allowedTypes.has(entry.type) && entry.description &&
+      Number(entry.amount) > 0 && /^\d{4}-\d{2}-\d{2}$/.test(entry.date || "")
+    ).map((entry) => ({
+      type: entry.type,
+      description: String(entry.description).trim(),
+      amount: Number(entry.amount),
+      category: entry.category || "Outros",
+      date: entry.date
+    }));
+  }
+
+  async function fetchTransactions(userId) {
+    if (!supabaseClient) throw new Error("Supabase indisponível.");
+    const { data, error } = await supabaseClient
+      .from("transactions")
+      .select(TRANSACTION_COLUMNS)
+      .eq("user_id", userId)
+      .order("transaction_date", { ascending: false })
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapDbTransaction);
+  }
+
+  async function migrateLegacyEntries(userId, cloudEntries) {
+    const legacy = validLegacyEntries();
+    if (!legacy.length) return { migrated: 0, skipped: false };
+
+    const doneKey = LEGACY_MIGRATION_PREFIX + userId;
+    if (localStorage.getItem(doneKey) === "1") return { migrated: 0, skipped: true };
+
+    // localStorage antigo não tinha usuário. Depois que um usuário o reivindica,
+    // outro usuário no mesmo navegador não recebe os mesmos lançamentos.
+    const claimedOwner = localStorage.getItem(LEGACY_OWNER_KEY);
+    if (claimedOwner && claimedOwner !== userId) {
+      console.warn("[YENOM] Migração antiga ignorada: estes dados locais já pertencem a outra conta neste navegador.");
+      return { migrated: 0, skipped: true };
+    }
+
+    // Compara quantidades de registros idênticos, preservando duplicatas legítimas
+    // e evitando inserir novamente se a migração for executada mais de uma vez.
+    const cloudCounts = new Map();
+    cloudEntries.forEach((entry) => {
+      const sig = transactionSignature(entry);
+      cloudCounts.set(sig, (cloudCounts.get(sig) || 0) + 1);
+    });
+
+    const toInsert = [];
+    legacy.forEach((entry) => {
+      const sig = transactionSignature(entry);
+      const existingCount = cloudCounts.get(sig) || 0;
+      if (existingCount > 0) {
+        cloudCounts.set(sig, existingCount - 1);
+      } else {
+        toInsert.push(transactionPayload(entry, userId));
+      }
+    });
+
+    if (toInsert.length) {
+      const { error } = await supabaseClient.from("transactions").insert(toInsert);
+      if (error) throw error;
+    }
+
+    // Somente marca como concluído depois do insert ter retornado sucesso.
+    // O STORAGE_KEY antigo não é removido: fica como backup não utilizado.
+    localStorage.setItem(LEGACY_OWNER_KEY, userId);
+    localStorage.setItem(doneKey, "1");
+    return { migrated: toInsert.length, skipped: false };
+  }
+
+  async function loadTransactionsForSession(session) {
+    const userId = session && session.user && session.user.id;
+    if (!userId) throw new Error("Usuário não autenticado.");
+
+    showToast("Carregando seus lançamentos...");
+    let cloudEntries = await fetchTransactions(userId);
+    const migration = await migrateLegacyEntries(userId, cloudEntries);
+    if (migration.migrated > 0) {
+      cloudEntries = await fetchTransactions(userId);
+      showToast(`✓ ${migration.migrated} lançamento${migration.migrated === 1 ? "" : "s"} antigo${migration.migrated === 1 ? "" : "s"} migrado${migration.migrated === 1 ? "" : "s"}!`);
+    }
+
+    entries = cloudEntries;
+    loadedTransactionsUserId = userId;
+    ensureAllCategoryColors();
+  }
+
+  function ensureTransactionsLoaded(session) {
+    const userId = session && session.user && session.user.id;
+    if (!userId) return Promise.reject(new Error("Usuário não autenticado."));
+    if (loadedTransactionsUserId === userId) return Promise.resolve();
+    if (transactionsLoadPromise && transactionsLoadPromise.userId === userId) return transactionsLoadPromise.promise;
+
+    const promise = loadTransactionsForSession(session).finally(() => {
+      if (transactionsLoadPromise && transactionsLoadPromise.promise === promise) transactionsLoadPromise = null;
+    });
+    transactionsLoadPromise = { userId, promise };
+    return promise;
   }
 
   function loadCustomCategories() {
@@ -1201,21 +1361,21 @@ try {
     });
   }
 
-  function handleFormSubmit(evt) {
+  async function handleFormSubmit(evt) {
     evt.preventDefault();
     const desc = document.getElementById("descInput").value.trim();
     const amount = parseCurrency(document.getElementById("amountInput").value);
     const date = document.getElementById("dateInput").value;
     let category = document.getElementById("categoryInput").value;
+    let customCategoryName = "";
 
     if (category === "__custom__") {
-      const customName = document.getElementById("customCategoryInput").value.trim();
-      if (!customName) {
+      customCategoryName = document.getElementById("customCategoryInput").value.trim();
+      if (!customCategoryName) {
         document.getElementById("customCategoryInput").focus();
         return;
       }
-      category = customName;
-      addCustomCategory(currentModalType, customName);
+      category = customCategoryName;
     }
 
     const categoryColor = document.getElementById("categoryColorCustom").value;
@@ -1225,23 +1385,64 @@ try {
       return;
     }
 
-    if (editingEntryId) {
-      const entry = entries.find((e) => e.id === editingEntryId);
-      Object.assign(entry, { type: currentModalType, description: desc, amount, date, category, demo: false });
-      showToast("✓ Lançamento atualizado!");
-    } else {
-      entries.push({ id: uid(), type: currentModalType, description: desc, amount, date, category, demo: false });
-      showToast("✓ Lançamento adicionado!");
+    if (!supabaseClient || !currentSession || !currentSession.user) {
+      showToast("Sua sessão expirou. Entre novamente para salvar o lançamento.");
+      return;
     }
 
-    setCategoryColor(currentModalType, category, categoryColor);
-    saveEntries();
-    closeModal(modalOverlay());
+    const submitButton = document.getElementById("submitBtn");
+    const previousText = submitButton.textContent;
+    submitButton.disabled = true;
+    submitButton.textContent = "Salvando...";
 
-    // Jump view to the month of the saved entry so the user sees it reflected
-    const [y, m] = date.split("-").map(Number);
-    viewYear = y; viewMonth = m - 1;
-    renderAll();
+    try {
+      const userId = authenticatedUserId();
+      const payload = transactionPayload({
+        type: currentModalType, description: desc, amount, date, category
+      }, userId);
+
+      if (editingEntryId) {
+        const { data, error } = await supabaseClient
+          .from("transactions")
+          .update(payload)
+          .eq("id", editingEntryId)
+          .eq("user_id", userId)
+          .select(TRANSACTION_COLUMNS)
+          .single();
+        if (error) throw error;
+        if (!data) throw new Error("Lançamento não encontrado ou sem permissão para editar.");
+
+        const updated = mapDbTransaction(data);
+        const index = entries.findIndex((entry) => entry.id === editingEntryId);
+        if (index >= 0) entries[index] = updated;
+        showToast("✓ Lançamento atualizado!");
+      } else {
+        const { data, error } = await supabaseClient
+          .from("transactions")
+          .insert(payload)
+          .select(TRANSACTION_COLUMNS)
+          .single();
+        if (error) throw error;
+        if (!data) throw new Error("O Supabase não retornou o lançamento salvo.");
+
+        entries.push(mapDbTransaction(data));
+        showToast("✓ Lançamento adicionado!");
+      }
+
+      if (customCategoryName) addCustomCategory(currentModalType, customCategoryName);
+      setCategoryColor(currentModalType, category, categoryColor);
+      closeModal(modalOverlay());
+
+      const [y, m] = date.split("-").map(Number);
+      viewYear = y; viewMonth = m - 1;
+      renderAll();
+    } catch (error) {
+      console.error("[YENOM] Erro ao salvar lançamento no Supabase:", error);
+      showToast("Não foi possível salvar o lançamento. Nada foi alterado. Tente novamente.");
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = previousText;
+    }
   }
 
   /* ---------------- Delete confirm ---------------- */
@@ -1252,13 +1453,42 @@ try {
     openModal(confirmOverlayEl());
   }
 
-  function performDelete() {
-    entries = entries.filter((e) => e.id !== deleteTargetId);
-    saveEntries();
-    closeModal(confirmOverlayEl());
-    showToast("✓ Lançamento excluído!");
-    deleteTargetId = null;
-    renderAll();
+  async function performDelete() {
+    if (!deleteTargetId) return;
+    if (!supabaseClient || !currentSession || !currentSession.user) {
+      showToast("Sua sessão expirou. Entre novamente para excluir o lançamento.");
+      return;
+    }
+
+    const button = document.getElementById("confirmDeleteBtn");
+    const previousText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Excluindo...";
+
+    try {
+      const userId = authenticatedUserId();
+      const targetId = deleteTargetId;
+      const { data, error } = await supabaseClient
+        .from("transactions")
+        .delete()
+        .eq("id", targetId)
+        .eq("user_id", userId)
+        .select("id");
+      if (error) throw error;
+      if (!data || data.length === 0) throw new Error("Lançamento não encontrado ou sem permissão para excluir.");
+
+      entries = entries.filter((entry) => entry.id !== targetId);
+      closeModal(confirmOverlayEl());
+      showToast("✓ Lançamento excluído!");
+      deleteTargetId = null;
+      renderAll();
+    } catch (error) {
+      console.error("[YENOM] Erro ao excluir lançamento no Supabase:", error);
+      showToast("Não foi possível excluir o lançamento. Nada foi alterado.");
+    } finally {
+      button.disabled = false;
+      button.textContent = previousText;
+    }
   }
 
   /* ---------------- Theme ---------------- */
@@ -1296,38 +1526,78 @@ try {
 
   function importData(file) {
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
+        if (!supabaseClient || !currentSession || !currentSession.user) throw new Error("Usuário não autenticado.");
         const parsed = JSON.parse(reader.result);
         const importedEntries = Array.isArray(parsed) ? parsed : parsed.entries;
         if (!Array.isArray(importedEntries)) throw new Error("Formato inválido");
         if (!Array.isArray(parsed) && parsed.categoryColors) saveCategoryColors(parsed.categoryColors);
         if (!Array.isArray(parsed) && parsed.customCategories) saveCustomCategories(parsed.customCategories);
-        const valid = importedEntries.filter((e) => e && e.type && e.amount && e.date && e.description);
-        const withNewIds = valid.map((e) => ({
-          id: uid(),
-          type: e.type, description: e.description, category: e.category || "Outros",
-          amount: Number(e.amount), date: e.date, demo: false
-        }));
-        entries = entries.concat(withNewIds);
-        saveEntries();
+
+        const valid = importedEntries.filter((entry) =>
+          entry && ["ganho", "gasto", "investimento"].includes(entry.type) &&
+          Number(entry.amount) > 0 && entry.date && entry.description
+        );
+        if (!valid.length) {
+          showToast("Nenhum lançamento válido encontrado no arquivo.");
+          return;
+        }
+
+        const userId = authenticatedUserId();
+        const payloads = valid.map((entry) => transactionPayload({
+          type: entry.type,
+          description: String(entry.description),
+          category: entry.category || "Outros",
+          amount: Number(entry.amount),
+          date: entry.date
+        }, userId));
+
+        const { data, error } = await supabaseClient
+          .from("transactions")
+          .insert(payloads)
+          .select(TRANSACTION_COLUMNS);
+        if (error) throw error;
+
+        const imported = (data || []).map(mapDbTransaction);
+        entries = entries.concat(imported);
         ensureAllCategoryColors();
-        showToast(`✓ ${withNewIds.length} lançamentos importados!`);
+        showToast(`✓ ${imported.length} lançamentos importados!`);
         renderAll();
-      } catch (err) {
-        showToast("Não foi possível importar esse arquivo.");
+      } catch (error) {
+        console.error("[YENOM] Erro ao importar lançamentos:", error);
+        showToast("Não foi possível importar esse arquivo. Nenhum lançamento foi salvo.");
       }
     };
     reader.readAsText(file);
   }
 
-  function clearDemoData() {
-    const before = entries.length;
-    entries = entries.filter((e) => !e.demo);
-    saveEntries();
-    const removed = before - entries.length;
-    showToast(removed > 0 ? "✓ Dados demonstrativos removidos!" : "Nenhum dado demonstrativo encontrado.");
-    renderAll();
+  async function clearDemoData() {
+    // A tabela oficial não cria nem identifica dados fictícios. Mantemos esta
+    // funcionalidade por compatibilidade; registros reais do Supabase nunca são apagados aqui.
+    const demoEntries = entries.filter((entry) => entry.demo);
+    if (!demoEntries.length) {
+      showToast("Nenhum dado demonstrativo encontrado.");
+      return;
+    }
+
+    try {
+      const userId = authenticatedUserId();
+      const ids = demoEntries.map((entry) => entry.id);
+      const { error } = await supabaseClient
+        .from("transactions")
+        .delete()
+        .in("id", ids)
+        .eq("user_id", userId);
+      if (error) throw error;
+      const idSet = new Set(ids);
+      entries = entries.filter((entry) => !idSet.has(entry.id));
+      showToast(`✓ ${ids.length} dado${ids.length === 1 ? "" : "s"} demonstrativo${ids.length === 1 ? "" : "s"} removido${ids.length === 1 ? "" : "s"}!`);
+      renderAll();
+    } catch (error) {
+      console.error("[YENOM] Erro ao remover dados demonstrativos:", error);
+      showToast("Não foi possível remover os dados demonstrativos.");
+    }
   }
 
   /* ---------------- Wiring ---------------- */
@@ -1416,8 +1686,7 @@ try {
     const savedTheme = localStorage.getItem(THEME_KEY) || "light";
     document.documentElement.setAttribute("data-theme", savedTheme);
 
-    safeRun("carregamento de lançamentos", loadEntries);
-
+    // Lançamentos são carregados do Supabase por showDashboard(), após autenticação.
     safeRun("navegação", setupNavigation);
     safeRun("eventos da interface", setupEventListeners);
 
