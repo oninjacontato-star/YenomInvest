@@ -32,6 +32,7 @@ try {
   let dashboardInitialized = false;
   let loadedTransactionsUserId = null;
   let transactionsLoadPromise = null;
+  let subscriptionCheckPromise = null;
 
   const authScreen = () => document.getElementById("authScreen");
   const appRoot = () => document.getElementById("app");
@@ -116,40 +117,80 @@ try {
     transactionsLoadPromise = null;
     entries = [];
     appRoot().hidden = true;
+    hidePaywall();
     authScreen().hidden = false;
     setAuthMode(mode, message, messageType);
     refreshIcons();
   }
 
+  function paywallRoot() { return document.getElementById("paywallScreen"); }
+
+  function showPaywallMessage(message = "") {
+    const el = document.getElementById("paywallMessage");
+    if (el) el.textContent = message;
+  }
+
+  async function hasActiveProSubscription(session) {
+    if (!session || !session.user || !supabaseClient) return false;
+    const userId = session.user.id;
+    const { data, error } = await supabaseClient
+      .from("subscriptions")
+      .select("plan,status,current_period_end")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return false;
+    return data.plan === "pro" && ["active", "trialing"].includes(data.status);
+  }
+
+  function showPaywall(session, message = "") {
+    currentSession = session;
+    authScreen().hidden = true;
+    appRoot().hidden = true;
+    const wall = paywallRoot();
+    if (wall) { wall.hidden = false; wall.style.display = "flex"; }
+    showPaywallMessage(message);
+    refreshIcons();
+  }
+
+  function hidePaywall() {
+    const wall = paywallRoot();
+    if (wall) { wall.hidden = true; wall.style.display = "none"; }
+  }
+
   async function showDashboard(session) {
-    if (!session || !session.user) {
-      showAuth("login");
+    if (!session || !session.user) { showAuth("login"); return; }
+    currentSession = session;
+    authScreen().hidden = true;
+    appRoot().hidden = true;
+    hidePaywall();
+
+    try {
+      const isPro = await hasActiveProSubscription(session);
+      if (!isPro) {
+        showPaywall(session);
+        return;
+      }
+    } catch (error) {
+      console.error("[YENOM] Falha ao verificar assinatura:", error);
+      showPaywall(session, "Não foi possível verificar sua assinatura agora. Tente novamente.");
       return;
     }
 
     const userChanged = loadedTransactionsUserId && loadedTransactionsUserId !== session.user.id;
-    currentSession = session;
     if (userChanged) entries = [];
-
     const emailEl = document.getElementById("loggedUserEmail");
     if (emailEl) emailEl.textContent = session.user.email || "Usuário autenticado";
-    authScreen().hidden = true;
+    hidePaywall();
     appRoot().hidden = false;
 
-    if (!dashboardInitialized) {
-      initDashboard();
-      dashboardInitialized = true;
-    }
-
+    if (!dashboardInitialized) { initDashboard(); dashboardInitialized = true; }
     try {
       await ensureTransactionsLoaded(session);
-      renderAll();
-      refreshIcons();
+      renderAll(); refreshIcons();
     } catch (error) {
       console.error("[YENOM] Falha ao carregar lançamentos do Supabase:", error);
-      entries = [];
-      loadedTransactionsUserId = null;
-      renderAll();
+      entries = []; loadedTransactionsUserId = null; renderAll();
       showToast("Não foi possível carregar seus lançamentos. Verifique sua conexão e tente novamente.");
     }
   }
@@ -268,6 +309,25 @@ try {
     });
     document.getElementById("forgotPasswordBtn").addEventListener("click", () => setAuthMode("recovery"));
     document.getElementById("logoutBtn").addEventListener("click", logout);
+    const paywallSubscribeBtn = document.getElementById("paywallSubscribeBtn");
+    if (paywallSubscribeBtn) paywallSubscribeBtn.addEventListener("click", startProCheckout);
+    const paywallLogoutBtn = document.getElementById("paywallLogoutBtn");
+    if (paywallLogoutBtn) paywallLogoutBtn.addEventListener("click", logout);
+    const paywallRefreshBtn = document.getElementById("paywallRefreshBtn");
+    if (paywallRefreshBtn) paywallRefreshBtn.addEventListener("click", async () => {
+      paywallRefreshBtn.disabled = true; showPaywallMessage("Verificando assinatura...");
+      try {
+        const { data, error } = await supabaseClient.auth.getSession();
+        if (error) throw error;
+        if (!data.session) { showAuth("login"); return; }
+        const active = await hasActiveProSubscription(data.session);
+        if (active) await showDashboard(data.session);
+        else showPaywall(data.session, "Ainda não encontramos uma assinatura PRO ativa para esta conta.");
+      } catch (error) {
+        console.error("[YENOM] Erro ao verificar assinatura:", error);
+        showPaywallMessage("Não foi possível verificar agora. Tente novamente.");
+      } finally { paywallRefreshBtn.disabled = false; }
+    });
   }
 
   async function initAuth() {

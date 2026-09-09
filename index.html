@@ -61,6 +61,21 @@
   </div>
 </section>
 
+<!-- PAYWALL PRO -->
+<section id="paywallScreen" hidden style="min-height:100vh;display:none;align-items:center;justify-content:center;padding:24px;background:var(--bg,#f7f5fb);">
+  <div style="width:min(520px,100%);background:var(--panel,#fff);border:1px solid rgba(124,58,237,.16);border-radius:24px;padding:32px;box-shadow:0 20px 60px rgba(72,36,120,.12);text-align:center;">
+    <div class="brand" style="justify-content:center;margin-bottom:24px;"><div class="brand-mark"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 17L10 11L14 15L20 8" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 8H20V14" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="brand-text"><strong>YENOM</strong><span>Invest</span></div></div>
+    <div style="font-size:42px;margin-bottom:10px;">👑</div>
+    <h1 style="margin:0 0 10px;">YENOM INVEST PRO</h1>
+    <p style="margin:0 0 24px;opacity:.75;line-height:1.55;">Sua conta está criada. Para acessar o painel financeiro, ative sua assinatura PRO.</p>
+    <div style="font-size:34px;font-weight:800;margin-bottom:4px;">R$ 19,90</div><div style="opacity:.65;margin-bottom:24px;">por mês</div>
+    <button class="btn-add" id="paywallSubscribeBtn" type="button" style="width:100%;justify-content:center;margin-bottom:12px;"><i data-lucide="crown"></i><span>Assinar PRO</span></button>
+    <button class="btn-secondary" id="paywallRefreshBtn" type="button" style="width:100%;justify-content:center;margin-bottom:12px;"><i data-lucide="refresh-cw"></i><span>Já paguei — verificar assinatura</span></button>
+    <button class="auth-link" id="paywallLogoutBtn" type="button">Sair da conta</button>
+    <p id="paywallMessage" style="min-height:20px;margin:18px 0 0;font-size:14px;opacity:.75;"></p>
+  </div>
+</section>
+
 <div class="app" id="app" hidden>
 
   <!-- SIDEBAR (desktop) -->
