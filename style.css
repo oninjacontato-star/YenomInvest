@@ -1249,3 +1249,149 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; letter-spacing: -0.01e
   #paywallScreen h1 { font-size: 28px; line-height: 1.15; }
   #paywallScreen h1 + p { font-size: 15px; }
 }
+
+
+/* ============================================
+   PAYWALL PRO · FIX DEFINITIVO DE CONTRASTE/MOBILE
+   O paywall usa um visual próprio e não herda as
+   cores claras do modo escuro do dashboard.
+   ============================================ */
+#paywallScreen {
+  background: #140b2b !important;
+  color: #241a3d !important;
+}
+
+#paywallScreen > div {
+  background: #ffffff !important;
+  color: #241a3d !important;
+  border-color: rgba(112, 56, 219, .18) !important;
+}
+
+#paywallScreen h1 {
+  color: #33176b !important;
+  opacity: 1 !important;
+  font-weight: 800 !important;
+  text-shadow: none !important;
+}
+
+#paywallScreen h1 + p {
+  color: #554768 !important;
+  opacity: 1 !important;
+  font-weight: 600 !important;
+}
+
+#paywallScreen h1 + p + div {
+  color: #7038db !important;
+  opacity: 1 !important;
+  font-weight: 800 !important;
+}
+
+#paywallScreen h1 + p + div + div {
+  color: #635b7a !important;
+  opacity: 1 !important;
+  font-weight: 700 !important;
+}
+
+#paywallScreen #paywallSubscribeBtn.paywall-subscribe-btn {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 56px !important;
+  margin: 0 0 12px !important;
+  padding: 14px 20px !important;
+  border-radius: 100px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: linear-gradient(135deg, #8455e8 0%, #7038db 50%, #5f2bc4 100%) !important;
+  color: #ffffff !important;
+  font-size: 16px !important;
+  font-weight: 800 !important;
+  letter-spacing: .045em !important;
+  line-height: 1.2 !important;
+  text-transform: uppercase !important;
+  box-shadow: 0 12px 28px -10px rgba(95, 43, 196, .55) !important;
+}
+
+/* Regra crítica: o CSS mobile do app esconde .btn-add span.
+   No botão do paywall o texto deve SEMPRE aparecer. */
+#paywallScreen #paywallSubscribeBtn.paywall-subscribe-btn span {
+  display: inline-block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  color: #ffffff !important;
+  font: inherit !important;
+}
+
+#paywallScreen #paywallRefreshBtn {
+  width: 100% !important;
+  min-height: 54px !important;
+  justify-content: center !important;
+  color: #ffffff !important;
+  background: #2c1b63 !important;
+  border-color: #2c1b63 !important;
+  font-weight: 700 !important;
+}
+
+#paywallScreen #paywallRefreshBtn span,
+#paywallScreen #paywallRefreshBtn i {
+  color: #ffffff !important;
+  opacity: 1 !important;
+}
+
+#paywallScreen #paywallLogoutBtn {
+  color: #7038db !important;
+  opacity: 1 !important;
+  font-weight: 800 !important;
+}
+
+#paywallScreen #paywallMessage {
+  color: #635b7a !important;
+  opacity: 1 !important;
+}
+
+/* Impede o tema escuro salvo no navegador de deixar texto claro
+   sobre o cartão branco do paywall. */
+[data-theme="dark"] #paywallScreen > div,
+[data-theme="dark"] #paywallScreen h1,
+[data-theme="dark"] #paywallScreen h1 + p,
+[data-theme="dark"] #paywallScreen h1 + p + div,
+[data-theme="dark"] #paywallScreen h1 + p + div + div,
+[data-theme="dark"] #paywallScreen #paywallMessage {
+  opacity: 1 !important;
+}
+[data-theme="dark"] #paywallScreen > div { background: #ffffff !important; color: #241a3d !important; }
+[data-theme="dark"] #paywallScreen h1 { color: #33176b !important; }
+[data-theme="dark"] #paywallScreen h1 + p { color: #554768 !important; }
+[data-theme="dark"] #paywallScreen h1 + p + div { color: #7038db !important; }
+[data-theme="dark"] #paywallScreen h1 + p + div + div,
+[data-theme="dark"] #paywallScreen #paywallMessage { color: #635b7a !important; }
+
+@media (max-width: 620px) {
+  #paywallScreen {
+    padding: 18px !important;
+  }
+  #paywallScreen > div {
+    padding: 30px 22px !important;
+    border-radius: 26px !important;
+  }
+  #paywallScreen h1 {
+    font-size: 28px !important;
+    line-height: 1.12 !important;
+  }
+  #paywallScreen h1 + p {
+    font-size: 15px !important;
+    line-height: 1.55 !important;
+  }
+  #paywallScreen h1 + p + div {
+    font-size: 38px !important;
+  }
+  #paywallScreen #paywallSubscribeBtn.paywall-subscribe-btn {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 56px !important;
+    padding: 15px 20px !important;
+  }
+  #paywallScreen #paywallSubscribeBtn.paywall-subscribe-btn span {
+    display: inline-block !important;
+  }
+}
