@@ -1224,3 +1224,28 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; letter-spacing: -0.01e
   .auth-copy h1 { font-size: 23px; }
   .account-settings-row { align-items: flex-start; }
 }
+
+
+/* PAYWALL PRO — contraste e legibilidade */
+#paywallScreen > div { color: #241a3d; }
+#paywallScreen h1 { color: #33176b !important; font-weight: 800 !important; opacity: 1 !important; }
+#paywallScreen p { color: #635b7a; opacity: 1 !important; font-weight: 500; }
+#paywallScreen h1 + p { color: #514568 !important; font-weight: 600 !important; }
+#paywallScreen h1 + p + div { color: #4c1f9e !important; opacity: 1 !important; }
+#paywallScreen h1 + p + div + div { color: #635b7a !important; opacity: 1 !important; font-weight: 600; }
+#paywallScreen .paywall-subscribe-btn { font-size: 15px; font-weight: 800; letter-spacing: .04em; min-height: 54px; }
+#paywallScreen #paywallRefreshBtn { color: #fff; font-weight: 700; }
+#paywallScreen #paywallLogoutBtn { color: #7038db; font-weight: 800; }
+#paywallScreen #paywallMessage { color: #635b7a !important; opacity: 1 !important; }
+[data-theme="dark"] #paywallScreen > div { color: #f3effe; }
+[data-theme="dark"] #paywallScreen h1 { color: #f3effe !important; }
+[data-theme="dark"] #paywallScreen h1 + p { color: #d8cff0 !important; }
+[data-theme="dark"] #paywallScreen h1 + p + div { color: #c4b1f7 !important; }
+[data-theme="dark"] #paywallScreen h1 + p + div + div,
+[data-theme="dark"] #paywallScreen #paywallMessage { color: #baacdc !important; }
+@media (max-width: 620px) {
+  #paywallScreen { padding: 18px !important; }
+  #paywallScreen > div { padding: 28px 22px !important; }
+  #paywallScreen h1 { font-size: 28px; line-height: 1.15; }
+  #paywallScreen h1 + p { font-size: 15px; }
+}
